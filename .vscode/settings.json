@@ -1,3 +1,18 @@
 {
-    "C_Cpp.default.cStandard": "c99",
+  "C_Cpp.default.cStandard": "c99",
+  "C_Cpp.default.compilerPath": "/usr/bin/gcc",
+  "files.associations": {
+    "rte_lcore.h": "c",
+    "kdns-worker.h": "c"
+  },
+  "C_Cpp.default.intelliSenseMode": "linux-clang-x64",
+  "clangd.arguments": [
+    "--background-index",
+    "--compile-commands-dir=build",
+    "-j=12",
+    "--header-insertion=iwyu",
+    "--pch-storage=disk"
+  ],
+  "editor.fontFamily": "Consolas, 'Courier New', monospace",
+  "editor.formatOnSave": true
 }
