@@ -7,6 +7,7 @@ APP = mdns-D
 # all source are stored in SRCS-y
 SRCS-y := main.c
 SRCS-y += kdns-config.c
+SRCS-y += kdns-worker.c
 
 PKGCONF ?= pkg-config
 
