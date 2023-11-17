@@ -9,6 +9,7 @@ struct eal_config
 {
     int argc;
     char argv[DPDK_MAX_ARG_NUM][DPDK_MAX_ARG_LEN];
+    unsigned long enabled_nic;
 };
 struct nic_config
 {

@@ -34,6 +34,16 @@ static int kdns_eal_init(struct rte_cfgfile *cfg, struct eal_config *eal, char *
         printf("Failed to get mem_channels from config file\n");
         return -1;
     }
+    entry = rte_cfgfile_get_entry(cfg, "EAL", "enabled_nic");
+    if (entry)
+    {
+        eal->enabled_nic = strtoul(entry, NULL, 16);
+    }
+    else
+    {
+        printf("Failed to get enabled nic mask\n");
+        return -1;
+    }
     return 0;
 }
 
