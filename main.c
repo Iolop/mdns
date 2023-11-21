@@ -11,6 +11,7 @@
 #include <rte_common.h>
 #include <rte_eal.h>
 #include <rte_ethdev.h>
+#include <rte_ether.h>
 #include <rte_launch.h>
 #include <rte_lcore.h>
 #include <rte_malloc.h>
@@ -63,6 +64,7 @@ static int port_init()
     struct rte_eth_conf eth_conf;
     struct rte_eth_rxconf rx_conf;
     struct rte_eth_txconf tx_conf;
+    struct rte_ether_addr addr;
 
     nb_port = rte_eth_dev_count_avail();
     eth_conf = port_conf;
@@ -145,6 +147,13 @@ static int port_init()
                    port_id, strerror(-ret));
             return -1;
         }
+
+        ret = rte_eth_dev_start(port_id);
+        if (ret < 0)
+        {
+            printf("Error during starting device (port %u): %s\n", port_id, strerror(-ret));
+            return -1;
+        }
     }
     return 0;
 }
@@ -179,6 +188,7 @@ int main(int argc, char **argv)
     int ret, i;
     unsigned lcore_id;
     char *dpdk_argv[DPDK_MAX_ARG_NUM];
+    uint16_t nb_port = 0;
 
     DEBUG = getenv("DEBUG") ? 1 : 0;
     parse_args(argc, argv);
@@ -195,17 +205,21 @@ int main(int argc, char **argv)
     if (ret < 0)
         rte_exit(EXIT_FAILURE, "Invalid EAL arguments\n");
 
+    nb_port = rte_eth_dev_count_avail();
+    mdns_pktmbuf_pool =
+        rte_pktmbuf_pool_create("mdns_pktmbuf_pool", NB_MBUF * nb_port, MEMPOOL_CACHE_SIZE, 0,
+                                RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+    if (mdns_pktmbuf_pool == NULL)
+        rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
     ret = port_init();
     if (ret < 0)
         rte_exit(EXIT_FAILURE, "port_init failed\n");
 
-    RTE_LCORE_FOREACH_WORKER(lcore_id)
-    {
-        rte_eal_remote_launch(dns_worker_start, NULL, lcore_id);
-    }
+    rte_eal_mp_remote_launch(dns_worker_start, NULL, SKIP_MAIN);
     RTE_LCORE_FOREACH_WORKER(lcore_id)
     {
         rte_eal_wait_lcore(lcore_id);
     }
+    rte_eal_cleanup();
     return 0;
 }

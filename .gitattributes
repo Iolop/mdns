@@ -1,2 +1,3 @@
 .vscode/** merge=ours
 build/** merge=ours
+.cache/** merge=ours
