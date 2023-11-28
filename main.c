@@ -34,6 +34,8 @@ static uint16_t nb_txd = NB_TXD;
 struct rte_mempool *mdns_pktmbuf_pool = NULL;
 struct rte_eth_dev_tx_buffer *tx_buffer[RTE_MAX_ETHPORTS];
 
+struct rte_eth_conf port_conf = {.txmode = {.mq_mode = RTE_ETH_MQ_TX_NONE}};
+
 static void debug_print(const char *fmt, ...)
 {
     if (!DEBUG)
@@ -71,6 +73,7 @@ static int port_init()
     unsigned long port_mask = g_kdns_cfg->eal.enabled_nic;
     RTE_ETH_FOREACH_DEV(port_id)
     {
+        printf("going to init port %u\n", port_id);
         if ((port_mask & (1 << port_id)) == 0)
         {
             printf("Skipping disabled port %u\n", port_id);
@@ -79,7 +82,8 @@ static int port_init()
         ret = rte_eth_dev_info_get(port_id, &dev_info);
         if (ret != 0)
         {
-            printf("Error during getting device (port %u) info: %s\n", port_id, strerror(-ret));
+            printf("Error during getting device (port %u) info: %s\n", port_id,
+                   strerror(-ret));
             return -1;
         }
         if (dev_info.tx_offload_capa & RTE_ETH_TX_OFFLOAD_MBUF_FAST_FREE)
@@ -90,68 +94,106 @@ static int port_init()
         if (g_kdns_cfg->nic.nb_rx_queue > dev_info.max_rx_queues ||
             g_kdns_cfg->nic.nb_tx_queue > dev_info.max_tx_queues)
         {
-            printf("Error: queue number is too big, max_rx_queue %d, max_tx_queue %d\n",
+            printf("Error: queue number is too big, max_rx_queue %d, "
+                   "max_tx_queue %d\n",
                    dev_info.max_rx_queues, dev_info.max_tx_queues);
             return -1;
         }
+
         ret = rte_eth_dev_configure(port_id, g_kdns_cfg->nic.nb_rx_queue,
                                     g_kdns_cfg->nic.nb_tx_queue, &eth_conf);
         if (ret != 0)
         {
-            printf("Error during configuring device (port %u): %s\n", port_id, strerror(-ret));
+            printf("Error during configuring device (port %u): %s\n", port_id,
+                   strerror(-ret));
             return -1;
         }
 
         ret = rte_eth_dev_adjust_nb_rx_tx_desc(port_id, &nb_rxd, &nb_txd);
         if (ret != 0)
         {
-            printf("Error during adjusting number of descriptors for device (port %u): %s\n",
+            printf("Error during adjusting number of descriptors for device "
+                   "(port %u): %s\n",
                    port_id, strerror(-ret));
             return -1;
         }
 
         rx_conf = dev_info.default_rxconf;
-        ret = rte_eth_rx_queue_setup(port_id, 0, nb_rxd, rte_socket_id(), &rx_conf,
+        ret = rte_eth_rx_queue_setup(port_id, 0, nb_rxd,
+                                     rte_eth_dev_socket_id(port_id), &rx_conf,
                                      mdns_pktmbuf_pool);
         if (ret < 0)
         {
-            printf("Error during setting up rx queue for device (port %u): %s\n", port_id,
-                   strerror(-ret));
+            printf(
+                "Error during setting up rx queue for device (port %u): %s\n",
+                port_id, strerror(-ret));
             return -1;
         }
 
         tx_conf = dev_info.default_txconf;
         tx_conf.offloads |= eth_conf.txmode.offloads;
-        ret = rte_eth_tx_queue_setup(port_id, 0, nb_txd, rte_socket_id(), &tx_conf);
+        ret = rte_eth_tx_queue_setup(port_id, 0, nb_txd,
+                                     rte_eth_dev_socket_id(port_id), &tx_conf);
         if (ret < 0)
         {
-            printf("Error during setting up tx queue for device (port %u): %s\n", port_id,
-                   strerror(-ret));
+            printf(
+                "Error during setting up tx queue for device (port %u): %s\n",
+                port_id, strerror(-ret));
             return -1;
         }
 
-        tx_buffer[port_id] = rte_zmalloc_socket("tx_buffer", RTE_ETH_TX_BUFFER_SIZE(MAX_PKT_BURST),
-                                                0, rte_eth_dev_socket_id(port_id));
+        tx_buffer[port_id] = rte_zmalloc_socket(
+            "tx_buffer", RTE_ETH_TX_BUFFER_SIZE(MAX_PKT_BURST), 0,
+            rte_eth_dev_socket_id(port_id));
         if (tx_buffer[port_id] == NULL)
         {
-            printf("Error during allocating tx buffer for device (port %u): %s\n", port_id,
-                   strerror(-ret));
+            printf(
+                "Error during allocating tx buffer for device (port %u): %s\n",
+                port_id, strerror(-ret));
             return -1;
         }
         rte_eth_tx_buffer_init(tx_buffer[port_id], MAX_PKT_BURST);
-        ret = rte_eth_tx_buffer_set_err_callback(tx_buffer[port_id],
-                                                 rte_eth_tx_buffer_count_callback, NULL);
+
+        ret = rte_eth_tx_buffer_set_err_callback(
+            tx_buffer[port_id], rte_eth_tx_buffer_count_callback, NULL);
         if (ret < 0)
         {
-            printf("Error during setting up tx buffer error callback for device (port %u): %s\n",
+            printf("Error during setting up tx buffer error callback for "
+                   "device (port %u): %s\n",
                    port_id, strerror(-ret));
             return -1;
         }
 
+        ret = rte_eth_macaddr_get(port_id, &addr);
+        if (ret)
+        {
+            printf("Error during getting mac address for device (port %u): "
+                   "%s.Set them in config\n",
+                   port_id, strerror(-ret));
+            // TODO set mac for nic
+            //  rte_eth_dev_default_mac_addr_set(port_id,
+            //  &g_kdns_cfg->nic.mac_addr);
+            return -1;
+        }
+        printf("Port %u MAC: %02" PRIx8 ":%02" PRIx8 ":%02" PRIx8 ":%02" PRIx8
+               ":%02" PRIx8 ":%02" PRIx8 "\n",
+               port_id, addr.addr_bytes[0], addr.addr_bytes[1],
+               addr.addr_bytes[2], addr.addr_bytes[3], addr.addr_bytes[4],
+               addr.addr_bytes[5]);
         ret = rte_eth_dev_start(port_id);
         if (ret < 0)
         {
-            printf("Error during starting device (port %u): %s\n", port_id, strerror(-ret));
+            printf("Error during starting device (port %u): %s\n", port_id,
+                   strerror(-ret));
+            return -1;
+        }
+
+        ret = rte_eth_promiscuous_enable(port_id);
+        if (ret < 0)
+        {
+            printf("Error during enabling promiscuous mode for device (port "
+                   "%u): %s\n",
+                   port_id, strerror(-ret));
             return -1;
         }
     }
@@ -200,15 +242,16 @@ int main(int argc, char **argv)
     for (i = 0; i < g_kdns_cfg->eal.argc; i++)
     {
         dpdk_argv[i] = strdup(g_kdns_cfg->eal.argv[i]);
+        printf("%s\n", dpdk_argv[i]);
     }
     ret = rte_eal_init(g_kdns_cfg->eal.argc, dpdk_argv);
     if (ret < 0)
         rte_exit(EXIT_FAILURE, "Invalid EAL arguments\n");
 
     nb_port = rte_eth_dev_count_avail();
-    mdns_pktmbuf_pool =
-        rte_pktmbuf_pool_create("mdns_pktmbuf_pool", NB_MBUF * nb_port, MEMPOOL_CACHE_SIZE, 0,
-                                RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
+    mdns_pktmbuf_pool = rte_pktmbuf_pool_create(
+        "mdns_pktmbuf_pool", NB_MBUF * nb_port, MEMPOOL_CACHE_SIZE, 0,
+        RTE_MBUF_DEFAULT_BUF_SIZE, rte_socket_id());
     if (mdns_pktmbuf_pool == NULL)
         rte_exit(EXIT_FAILURE, "Cannot create mbuf pool\n");
     ret = port_init();

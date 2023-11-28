@@ -7,6 +7,7 @@
 #define NB_MBUF (2048)
 #define MEMPOOL_CACHE_SIZE (64)
 #define MAX_PKT_BURST (32)
-struct rte_eth_conf port_conf = {.rxmode = {.mq_mode = RTE_ETH_MQ_RX_RSS},
-                                 .txmode = {.mq_mode = RTE_ETH_MQ_TX_NONE}};
+
+int set_mac();
+extern struct rte_eth_conf port_conf;
 #endif
