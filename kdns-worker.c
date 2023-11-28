@@ -1,5 +1,6 @@
 #include "common.h"
 #include "kdns-config.h"
+#include <generic/rte_byteorder.h>
 #include <netinet/in.h>
 #include <rte_ethdev.h>
 #include <rte_ether.h>
@@ -16,6 +17,7 @@ static int packet_process_start(struct rte_mbuf **pkts_burst,
     struct rte_mbuf *m;
     struct rte_ether_hdr *ether_h;
     unsigned int i;
+    uint32_t cksum;
     for (i = 0; i < nb_rx; i++)
     {
         m = pkts_burst[i];
@@ -34,15 +36,24 @@ static int packet_process_start(struct rte_mbuf **pkts_burst,
                 {
                     printf("icmp echo request\n");
                     icmp_h->icmp_type = RTE_IP_ICMP_ECHO_REPLY;
-                    icmp_h->icmp_cksum = 0;
-                    icmp_h->icmp_cksum =
-                        rte_raw_cksum(icmp_h, sizeof(struct rte_icmp_hdr));
+                    cksum = ~icmp_h->icmp_cksum & 0xffff;
+                    cksum += ~RTE_BE16(RTE_IP_ICMP_ECHO_REQUEST << 8) & 0xffff;
+                    cksum += RTE_BE16(RTE_IP_ICMP_ECHO_REPLY << 8);
+                    cksum = (cksum & 0xffff) + (cksum >> 16);
+                    cksum = (cksum & 0xffff) + (cksum >> 16);
+                    icmp_h->icmp_cksum = ~cksum;
                     ipv4_h->hdr_checksum = 0;
                     ipv4_h->hdr_checksum = rte_ipv4_cksum(ipv4_h);
                     struct rte_ether_addr tmp;
                     rte_ether_addr_copy(&ether_h->src_addr, &tmp);
                     rte_ether_addr_copy(&ether_h->dst_addr, &ether_h->src_addr);
                     rte_ether_addr_copy(&tmp, &ether_h->dst_addr);
+
+                    rte_be32_t tmp_ip;
+                    tmp_ip = ipv4_h->dst_addr;
+                    ipv4_h->dst_addr = ipv4_h->src_addr;
+                    ipv4_h->src_addr = tmp_ip;
+
                     rte_eth_tx_burst(0, 0, &m, 1);
                 }
                 else
