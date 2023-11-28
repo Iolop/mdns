@@ -1,3 +1,3 @@
 # mdns
 
-A tiny dns server powered by DPDK
+A tiny icmp ping reply powered by DPDK
